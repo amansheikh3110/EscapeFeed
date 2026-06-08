@@ -1,4 +1,4 @@
-# eighth_flutter_app
+Addiction to shorts, not anymore
 
 A new Flutter project.
 
