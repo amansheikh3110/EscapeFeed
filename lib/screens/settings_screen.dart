@@ -1,349 +1,303 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../services/timer_manager.dart';
+import '../services/theme_notifier.dart';
 import '../utils/constants.dart';
 import '../services/usage_tracker.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Settings / Guide screen
-// ─────────────────────────────────────────────────────────────────────────────
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final c = CtrlColors.of(context);
     final tm = Provider.of<TimerManager>(context);
+    final tn = Provider.of<ThemeNotifier>(context);
 
     return Scaffold(
-      backgroundColor: NexusColors.void_,
-      extendBodyBehindAppBar: true,
-      appBar: _buildAppBar(context),
-      body: Stack(
-        children: [
-          // Static aurora bg
-          Positioned.fill(child: CustomPaint(painter: _SettingsAurora())),
-
-          SafeArea(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: c.bg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 10, 16, 0),
+              child: Row(
                 children: [
-                  // ── System status header ─────────────────────────────
-                  _SectionLabel('SYSTEM STATUS'),
-                  const SizedBox(height: 10),
-                  _buildSystemStatus(tm),
-                  const SizedBox(height: 28),
-
-                  // ── Setup guide ──────────────────────────────────────
-                  _SectionLabel('SETUP GUIDE'),
-                  const SizedBox(height: 10),
-                  _buildGuideCard(tm),
-                  const SizedBox(height: 28),
-
-                  // ── Developer tools ──────────────────────────────────
-                  _SectionLabel('DEVELOPER TOOLS'),
-                  const SizedBox(height: 10),
-                  _buildDevTools(context, tm),
-                  const SizedBox(height: 28),
-
-                  // ── Footer ───────────────────────────────────────────
-                  _buildFooter(),
+                  IconButton(
+                    icon: Icon(Icons.arrow_back_ios_new_rounded,
+                        size: 18, color: c.textSub),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  Text(
+                    'Settings',
+                    style: GoogleFonts.inter(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: c.text,
+                    ),
+                  ),
                 ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Appearance ─────────────────────────────────────────
+                    _SectionLabel('APPEARANCE', c),
+                    const SizedBox(height: 8),
+                    _Card(
+                      color: c.card,
+                      border: c.border,
+                      child: _Row(
+                        icon: tn.isDark
+                            ? Icons.dark_mode_rounded
+                            : Icons.light_mode_rounded,
+                        iconColor: c.accent,
+                        title: 'App Theme',
+                        subtitle: tn.isDark ? 'Dark mode' : 'Light mode',
+                        c: c,
+                        trailing: _MiniSwitch(
+                          value: tn.isDark,
+                          accent: c.accent,
+                          onTap: tn.toggle,
+                        ),
+                      ),
+                    ),
 
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
-    return AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-        color: NexusColors.textSecondary,
-        onPressed: () => Navigator.pop(context),
-      ),
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'SETTINGS',
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: NexusColors.textBright,
-              letterSpacing: 3,
-            ),
-          ),
-          Text(
-            'system configuration',
-            style: TextStyle(
-                fontSize: 11, color: NexusColors.textDim, letterSpacing: 0.5),
-          ),
-        ],
-      ),
-    );
-  }
+                    const SizedBox(height: 22),
 
-  // ── System status panel ─────────────────────────────────────────────────────
-  Widget _buildSystemStatus(TimerManager tm) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          decoration: BoxDecoration(
-            color: NexusColors.glassBg,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: NexusColors.glassBorder, width: 1.5),
-          ),
-          child: Column(
-            children: [
-              _StatusRow(
-                icon: Icons.bar_chart_rounded,
-                label: 'Usage Stats Access',
-                description: 'Track which app is in foreground',
-                isOk: tm.hasUsagePermission,
-                onFix: UsageTracker.requestUsageStatsPermission,
-              ),
-              _Divider(),
-              _StatusRow(
-                icon: Icons.accessibility_new_rounded,
-                label: 'Accessibility Service',
-                description: 'Close apps when limit reached',
-                isOk: tm.hasAccessibilityPermission,
-                onFix: UsageTracker.openAccessibilitySettings,
-              ),
-              _Divider(),
-              _StatusRow(
-                icon: Icons.notifications_outlined,
-                label: 'Notification Access',
-                description: 'Keep background service alive',
-                isOk: tm.hasNotificationPermission,
-                onFix: tm.requestNotificationPermission,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+                    // ── Permissions ────────────────────────────────────────
+                    _SectionLabel('PERMISSIONS', c),
+                    const SizedBox(height: 8),
+                    _Card(
+                      color: c.card,
+                      border: c.border,
+                      child: Column(
+                        children: [
+                          _PermRow(
+                            icon: Icons.bar_chart_rounded,
+                            title: 'Usage Stats',
+                            subtitle: 'Track foreground app time',
+                            isOk: tm.hasUsagePermission,
+                            c: c,
+                            onFix: UsageTracker.requestUsageStatsPermission,
+                          ),
+                          _Divider(c: c),
+                          _PermRow(
+                            icon: Icons.accessibility_new_rounded,
+                            title: 'Accessibility',
+                            subtitle: 'Close apps when limit reached',
+                            isOk: tm.hasAccessibilityPermission,
+                            c: c,
+                            onFix: UsageTracker.openAccessibilitySettings,
+                          ),
+                          _Divider(c: c),
+                          _PermRow(
+                            icon: Icons.notifications_outlined,
+                            title: 'Notifications',
+                            subtitle: 'Run background service',
+                            isOk: tm.hasNotificationPermission,
+                            c: c,
+                            onFix: tm.requestNotificationPermission,
+                          ),
+                        ],
+                      ),
+                    ),
 
-  // ── Setup guide ─────────────────────────────────────────────────────────────
-  Widget _buildGuideCard(TimerManager tm) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          decoration: BoxDecoration(
-            color: NexusColors.glassBg,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: NexusColors.glassBorder, width: 1.5),
-          ),
-          child: Column(
-            children: [
-              _GuideStep(
-                number: '01',
-                title: 'Grant Usage Stats Access',
-                body: 'Allows NEXUS to monitor which app is in the foreground '
-                    'and count your active usage time accurately.',
-                done: tm.hasUsagePermission,
-              ),
-              _Divider(),
-              _GuideStep(
-                number: '02',
-                title: 'Enable Accessibility Service',
-                body: 'Enables the background blocker to press Back and send '
-                    'you home once your daily limit is exceeded.',
-                done: tm.hasAccessibilityPermission,
-              ),
-              _Divider(),
-              _GuideStep(
-                number: '03',
-                title: 'Allow Notifications',
-                body: 'Android requires a persistent notification so the '
-                    'tracking service is never killed by battery saver.',
-                done: tm.hasNotificationPermission,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+                    const SizedBox(height: 22),
 
-  // ── Developer tools ──────────────────────────────────────────────────────────
-  Widget _buildDevTools(BuildContext context, TimerManager tm) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          decoration: BoxDecoration(
-            color: NexusColors.glassBg,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: NexusColors.glassBorder, width: 1.5),
-          ),
-          child: Column(
-            children: [
-              _DevAction(
-                icon: Icons.refresh_rounded,
-                iconColor: NexusColors.neonBlue,
-                label: 'Refresh Installed Apps',
-                description: 'Re-query Android package manager',
-                onTap: () async {
-                  await tm.loadInstalledApps();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      _snack('App list refreshed', NexusColors.success),
-                    );
-                  }
-                },
-              ),
-              _Divider(),
-              _DevAction(
-                icon: Icons.restore_rounded,
-                iconColor: NexusColors.warning,
-                label: 'Force Reset Usage Stats',
-                description: 'Zero out usage for all blocked apps',
-                onTap: () async {
-                  await tm.forceResetAll();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      _snack('All usage stats reset', NexusColors.warning),
-                    );
-                  }
-                },
-              ),
-              _Divider(),
-              _DevAction(
-                icon: Icons.delete_forever_rounded,
-                iconColor: NexusColors.danger,
-                label: 'Clear All Limits & Cooldowns',
-                description: 'Remove every configured app limit',
-                onTap: () async {
-                  for (final app in List.from(tm.blockedApps)) {
-                    await tm.toggleAppBlock(
-                        {'packageName': app.packageName, 'name': app.appName},
-                        false);
-                  }
-                  await tm.forceResetAll();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      _snack('All limits cleared', NexusColors.danger),
-                    );
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+                    // ── How it works ───────────────────────────────────────
+                    _SectionLabel('HOW IT WORKS', c),
+                    const SizedBox(height: 8),
+                    _Card(
+                      color: c.card,
+                      border: c.border,
+                      child: Column(
+                        children: [
+                          _GuideStep(
+                            number: '1',
+                            title: 'Grant Usage Stats',
+                            body: 'Lets ctrl. monitor which app is in the foreground and track your usage time.',
+                            done: tm.hasUsagePermission,
+                            c: c,
+                          ),
+                          _Divider(c: c),
+                          _GuideStep(
+                            number: '2',
+                            title: 'Enable Accessibility',
+                            body: 'Allows ctrl. to press Back and return you home once your daily limit is hit.',
+                            done: tm.hasAccessibilityPermission,
+                            c: c,
+                          ),
+                          _Divider(c: c),
+                          _GuideStep(
+                            number: '3',
+                            title: 'Allow Notifications',
+                            body: 'Keeps the background tracking service alive — Android requires a notification.',
+                            done: tm.hasNotificationPermission,
+                            c: c,
+                          ),
+                        ],
+                      ),
+                    ),
 
-  // ── Footer ───────────────────────────────────────────────────────────────────
-  Widget _buildFooter() {
-    return Center(
-      child: Column(
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: NexusColors.neonCyan,
-                  boxShadow: [
-                    BoxShadow(
-                        color: NexusColors.neonCyan.withOpacity(0.7),
-                        blurRadius: 6),
+                    const SizedBox(height: 22),
+
+                    // ── Developer tools ────────────────────────────────────
+                    _SectionLabel('DEVELOPER TOOLS', c),
+                    const SizedBox(height: 8),
+                    _Card(
+                      color: c.card,
+                      border: c.border,
+                      child: Column(
+                        children: [
+                          _DevTile(
+                            icon: Icons.refresh_rounded,
+                            iconColor: c.accent,
+                            title: 'Refresh App List',
+                            subtitle: 'Re-query Android package manager',
+                            c: c,
+                            onTap: () async {
+                              await tm.loadInstalledApps();
+                              if (context.mounted) {
+                                _snack(context, 'App list refreshed',
+                                    kColorSuccess);
+                              }
+                            },
+                          ),
+                          _Divider(c: c),
+                          _DevTile(
+                            icon: Icons.restore_rounded,
+                            iconColor: kColorWarning,
+                            title: 'Reset All Usage Stats',
+                            subtitle: 'Zero out usage for every blocked app',
+                            c: c,
+                            onTap: () async {
+                              await tm.forceResetAll();
+                              if (context.mounted) {
+                                _snack(context, 'All stats reset',
+                                    kColorWarning);
+                              }
+                            },
+                          ),
+                          _Divider(c: c),
+                          _DevTile(
+                            icon: Icons.delete_forever_rounded,
+                            iconColor: kColorDanger,
+                            title: 'Clear All Limits',
+                            subtitle: 'Remove every configured app limit',
+                            c: c,
+                            onTap: () async {
+                              for (final app in List.from(tm.blockedApps)) {
+                                await tm.toggleAppBlock(
+                                    {'packageName': app.packageName, 'name': app.appName},
+                                    false);
+                              }
+                              await tm.forceResetAll();
+                              if (context.mounted) {
+                                _snack(context, 'All limits cleared',
+                                    kColorDanger);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 32),
+                    Center(
+                      child: Text(
+                        'ctrl.  v1.0.0  ·  Digital Well-being',
+                        style: TextStyle(fontSize: 12, color: c.textMuted),
+                      ),
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Text(
-                'NEXUS CONTROL',
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                  color: NexusColors.textSecondary,
-                  letterSpacing: 3,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'v1.0.0  ·  Digital Well-being',
-            style: TextStyle(fontSize: 11, color: NexusColors.textDim),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  SnackBar _snack(String msg, Color color) => SnackBar(
+  void _snack(BuildContext context, String msg, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
         content: Text(msg),
-        backgroundColor: color.withOpacity(0.85),
+        backgroundColor: color.withValues(alpha: 0.9),
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      );
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Reusable widgets
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Reusable sub-widgets ───────────────────────────────────────────────────────
 
 class _SectionLabel extends StatelessWidget {
   final String text;
-  const _SectionLabel(this.text);
+  final CtrlColors c;
+  const _SectionLabel(this.text, this.c);
 
   @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: GoogleFonts.spaceGrotesk(
-        fontSize: 10,
-        fontWeight: FontWeight.w800,
-        color: NexusColors.textDim,
-        letterSpacing: 2.5,
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(left: 4, bottom: 2),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: c.textMuted,
+            letterSpacing: 1.2,
+          ),
+        ),
+      );
+}
+
+class _Card extends StatelessWidget {
+  final Widget child;
+  final Color color;
+  final Color border;
+  const _Card({required this.child, required this.color, required this.border});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: border),
+        ),
+        child: child,
+      );
 }
 
 class _Divider extends StatelessWidget {
+  final CtrlColors c;
+  const _Divider({required this.c});
+
   @override
   Widget build(BuildContext context) =>
-      const Divider(color: NexusColors.glassBorder, height: 1, indent: 16, endIndent: 16);
+      Divider(color: c.border, height: 1, indent: 16, endIndent: 16);
 }
 
-/// Permission status row
-class _StatusRow extends StatelessWidget {
+class _Row extends StatelessWidget {
   final IconData icon;
-  final String label;
-  final String description;
-  final bool isOk;
-  final VoidCallback onFix;
-
-  const _StatusRow({
-    required this.icon,
-    required this.label,
-    required this.description,
-    required this.isOk,
-    required this.onFix,
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final CtrlColors c;
+  final Widget trailing;
+  const _Row({
+    required this.icon, required this.iconColor,
+    required this.title, required this.subtitle,
+    required this.c, required this.trailing,
   });
 
   @override
@@ -353,75 +307,112 @@ class _StatusRow extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 34,
+            height: 34,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isOk
-                  ? NexusColors.success.withOpacity(0.12)
-                  : NexusColors.warning.withOpacity(0.10),
-              border: Border.all(
-                color: isOk
-                    ? NexusColors.success.withOpacity(0.4)
-                    : NexusColors.warning.withOpacity(0.35),
-              ),
+              color: iconColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(
-              icon,
-              size: 18,
-              color: isOk ? NexusColors.success : NexusColors.warning,
-            ),
+            child: Icon(icon, size: 17, color: iconColor),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
+                Text(title,
                     style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: NexusColors.textBright)),
-                Text(description,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: c.text)),
+                Text(subtitle,
+                    style: TextStyle(fontSize: 12, color: c.textSub)),
+              ],
+            ),
+          ),
+          trailing,
+        ],
+      ),
+    );
+  }
+}
+
+class _PermRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool isOk;
+  final CtrlColors c;
+  final VoidCallback onFix;
+  const _PermRow({
+    required this.icon, required this.title, required this.subtitle,
+    required this.isOk, required this.c, required this.onFix,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: isOk
+                  ? kColorSuccess.withValues(alpha: 0.12)
+                  : kColorWarning.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon,
+                size: 17,
+                color: isOk ? kColorSuccess : kColorWarning),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
                     style: TextStyle(
-                        fontSize: 11, color: NexusColors.textDim)),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: c.text)),
+                Text(subtitle,
+                    style: TextStyle(fontSize: 12, color: c.textSub)),
               ],
             ),
           ),
           const SizedBox(width: 8),
           if (isOk)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: NexusColors.success.withOpacity(0.12),
+                color: kColorSuccess.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                    color: NexusColors.success.withOpacity(0.4), width: 1),
               ),
               child: Text('OK',
                   style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                      color: NexusColors.success,
-                      letterSpacing: 0.5)),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: kColorSuccess)),
             )
           else
             GestureDetector(
               onTap: onFix,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: NexusColors.warning.withOpacity(0.12),
+                  color: kColorWarning.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                      color: NexusColors.warning.withOpacity(0.4), width: 1),
+                      color: kColorWarning.withValues(alpha: 0.35)),
                 ),
-                child: Text('FIX',
-                    style: GoogleFonts.spaceGrotesk(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        color: NexusColors.warning,
-                        letterSpacing: 0.5)),
+                child: Text('Fix',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: kColorWarning)),
               ),
             ),
         ],
@@ -430,18 +421,15 @@ class _StatusRow extends StatelessWidget {
   }
 }
 
-/// Guide step (numbered + checkbox)
 class _GuideStep extends StatelessWidget {
   final String number;
   final String title;
   final String body;
   final bool done;
-
+  final CtrlColors c;
   const _GuideStep({
-    required this.number,
-    required this.title,
-    required this.body,
-    required this.done,
+    required this.number, required this.title,
+    required this.body, required this.done, required this.c,
   });
 
   @override
@@ -452,53 +440,40 @@ class _GuideStep extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 30,
+            height: 30,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: done
-                  ? NexusColors.success.withOpacity(0.15)
-                  : NexusColors.overlay,
+              color: done ? kColorSuccess.withValues(alpha: 0.12) : c.border,
               border: Border.all(
                 color: done
-                    ? NexusColors.success.withOpacity(0.5)
-                    : NexusColors.textDim.withOpacity(0.3),
-                width: 1.5,
+                    ? kColorSuccess.withValues(alpha: 0.5)
+                    : c.textMuted.withValues(alpha: 0.3),
               ),
             ),
             child: done
-                ? const Icon(Icons.check_rounded,
-                    size: 16, color: NexusColors.success)
+                ? Icon(Icons.check_rounded, size: 15, color: kColorSuccess)
                 : Center(
-                    child: Text(
-                      number,
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        color: NexusColors.textSecondary,
-                      ),
-                    ),
-                  ),
+                    child: Text(number,
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: c.textSub))),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: done ? NexusColors.textBright : NexusColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  body,
-                  style: TextStyle(
-                      fontSize: 12, color: NexusColors.textDim, height: 1.5),
-                ),
+                Text(title,
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: done ? c.text : c.textSub)),
+                const SizedBox(height: 3),
+                Text(body,
+                    style: TextStyle(
+                        fontSize: 12, color: c.textMuted, height: 1.5)),
               ],
             ),
           ),
@@ -508,20 +483,17 @@ class _GuideStep extends StatelessWidget {
   }
 }
 
-/// Developer action row
-class _DevAction extends StatelessWidget {
+class _DevTile extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
-  final String label;
-  final String description;
+  final String title;
+  final String subtitle;
+  final CtrlColors c;
   final VoidCallback onTap;
-
-  const _DevAction({
-    required this.icon,
-    required this.iconColor,
-    required this.label,
-    required this.description,
-    required this.onTap,
+  const _DevTile({
+    required this.icon, required this.iconColor,
+    required this.title, required this.subtitle,
+    required this.c, required this.onTap,
   });
 
   @override
@@ -529,40 +501,35 @@ class _DevAction extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(0),
-      splashColor: iconColor.withOpacity(0.06),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 34,
+              height: 34,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: iconColor.withOpacity(0.10),
-                border: Border.all(
-                    color: iconColor.withOpacity(0.3), width: 1),
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, size: 18, color: iconColor),
+              child: Icon(icon, size: 17, color: iconColor),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
+                  Text(title,
                       style: TextStyle(
                           fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: NexusColors.textBright)),
-                  Text(description,
-                      style: TextStyle(
-                          fontSize: 11, color: NexusColors.textDim)),
+                          fontWeight: FontWeight.w600,
+                          color: c.text)),
+                  Text(subtitle,
+                      style: TextStyle(fontSize: 12, color: c.textSub)),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded,
-                size: 18, color: NexusColors.textDim),
+            Icon(Icons.chevron_right_rounded, size: 18, color: c.textMuted),
           ],
         ),
       ),
@@ -570,29 +537,46 @@ class _DevAction extends StatelessWidget {
   }
 }
 
-/// Static aurora for settings bg
-class _SettingsAurora extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    _orb(canvas, size, 0.80, 0.10, size.width * 0.55,
-        const Color(0xFF4A148C), 0.11);
-    _orb(canvas, size, 0.15, 0.60, size.width * 0.50,
-        const Color(0xFF006064), 0.09);
-  }
+class _MiniSwitch extends StatelessWidget {
+  final bool value;
+  final Color accent;
+  final VoidCallback onTap;
+  const _MiniSwitch({required this.value, required this.accent, required this.onTap});
 
-  void _orb(Canvas canvas, Size size, double dx, double dy, double r,
-      Color color, double opacity) {
-    final center = Offset(size.width * dx, size.height * dy);
-    canvas.drawCircle(
-      center,
-      r,
-      Paint()
-        ..shader = RadialGradient(
-          colors: [color.withOpacity(opacity), Colors.transparent],
-        ).createShader(Rect.fromCircle(center: center, radius: r)),
+  @override
+  Widget build(BuildContext context) {
+    final trackOff = Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFF2C2C2E)
+        : const Color(0xFFE5E5EA);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        width: 46,
+        height: 27,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: value ? accent : trackOff,
+        ),
+        child: AnimatedAlign(
+          duration: const Duration(milliseconds: 250),
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 21,
+            height: 21,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 3)
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
-
-  @override
-  bool shouldRepaint(_SettingsAurora old) => false;
 }
