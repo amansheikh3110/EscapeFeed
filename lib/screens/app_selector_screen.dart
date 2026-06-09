@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -6,513 +5,395 @@ import '../services/timer_manager.dart';
 import '../models/app_limit.dart';
 import '../utils/constants.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  App Selector Screen
-// ─────────────────────────────────────────────────────────────────────────────
 class AppSelectorScreen extends StatefulWidget {
   const AppSelectorScreen({super.key});
-
   @override
   State<AppSelectorScreen> createState() => _AppSelectorScreenState();
 }
 
 class _AppSelectorScreenState extends State<AppSelectorScreen> {
   String _query = '';
-  final FocusNode _searchFocus = FocusNode();
-  bool _searchFocused = false;
+  final _focusNode = FocusNode();
+  bool _focused = false;
 
   @override
   void initState() {
     super.initState();
-    _searchFocus.addListener(() {
-      setState(() => _searchFocused = _searchFocus.hasFocus);
-    });
+    _focusNode.addListener(() => setState(() => _focused = _focusNode.hasFocus));
   }
 
   @override
   void dispose() {
-    _searchFocus.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = CtrlColors.of(context);
     final tm = Provider.of<TimerManager>(context);
     final installed = tm.installedApps;
     final blocked = tm.blockedApps;
 
-    final filtered = installed.where((app) {
-      final name = (app['name'] as String? ?? '').toLowerCase();
-      final pkg = (app['packageName'] as String? ?? '').toLowerCase();
-      final q = _query.toLowerCase();
-      return name.contains(q) || pkg.contains(q);
-    }).toList();
+    final filtered = _query.isEmpty
+        ? installed
+        : installed.where((a) {
+            final name = (a['name'] as String? ?? '').toLowerCase();
+            final pkg = (a['packageName'] as String? ?? '').toLowerCase();
+            final q = _query.toLowerCase();
+            return name.contains(q) || pkg.contains(q);
+          }).toList();
 
     return Scaffold(
-      backgroundColor: NexusColors.void_,
-      extendBodyBehindAppBar: true,
-      appBar: _buildAppBar(context),
-      body: Stack(
-        children: [
-          // Subtle static gradient bg (no animation here for perf)
-          Positioned.fill(
-            child: CustomPaint(painter: _StaticAurora()),
-          ),
-          SafeArea(
-            child: Column(
-              children: [
-                const SizedBox(height: 8),
-                _buildSearchBar(),
-                const SizedBox(height: 4),
-                _buildCountBar(filtered.length, blocked.length),
-                const SizedBox(height: 4),
-                Expanded(
-                  child: tm.isLoadingApps
-                      ? _buildLoader()
-                      : filtered.isEmpty
-                          ? _buildEmpty()
-                          : ListView.builder(
-                              physics: const BouncingScrollPhysics(),
-                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
-                              itemCount: filtered.length,
-                              itemBuilder: (_, i) {
-                                final app = filtered[i];
-                                final pkg = app['packageName'] as String;
-                                final name = app['name'] as String;
-                                final isSystem = app['isSystem'] as bool? ?? false;
-                                final limIdx = blocked.indexWhere(
-                                    (a) => a.packageName == pkg);
-                                final isLimited = limIdx != -1;
-                                final limit =
-                                    isLimited ? blocked[limIdx] : null;
-                                return _AppTile(
-                                  key: ValueKey(pkg),
-                                  name: name,
-                                  packageName: pkg,
-                                  isSystem: isSystem,
-                                  isLimited: isLimited,
-                                  limit: limit,
-                                  onToggle: (val) async {
-                                    await tm.toggleAppBlock(app, val);
-                                    if (mounted && val) {
-                                      _openConfig(context, pkg, name, tm, blocked);
-                                    }
-                                  },
-                                  onConfigure: () =>
-                                      _openConfig(context, pkg, name, tm, blocked),
-                                );
-                              },
-                            ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
-    return AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-        color: NexusColors.textSecondary,
-        onPressed: () => Navigator.pop(context),
-      ),
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'ADD LIMITS',
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: NexusColors.textBright,
-              letterSpacing: 3,
-            ),
-          ),
-          Text(
-            'select apps to control',
-            style: TextStyle(
-              fontSize: 11,
-              color: NexusColors.textDim,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        decoration: BoxDecoration(
-          color: NexusColors.elevated,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: _searchFocused
-                ? NexusColors.neonCyan.withOpacity(0.5)
-                : NexusColors.glassBorder,
-            width: _searchFocused ? 1.5 : 1,
-          ),
-          boxShadow: _searchFocused
-              ? [
-                  BoxShadow(
-                    color: NexusColors.neonCyan.withOpacity(0.08),
-                    blurRadius: 20,
+      backgroundColor: c.bg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ── Header ────────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 10, 16, 0),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.arrow_back_ios_new_rounded,
+                        size: 18, color: c.textSub),
+                    onPressed: () => Navigator.pop(context),
                   ),
-                ]
-              : null,
-        ),
-        child: TextField(
-          focusNode: _searchFocus,
-          onChanged: (v) => setState(() => _query = v),
-          style: TextStyle(
-              fontSize: 14, color: NexusColors.textBright, height: 1.2),
-          decoration: InputDecoration(
-            hintText: 'Search installed apps...',
-            hintStyle:
-                TextStyle(color: NexusColors.textDim, fontSize: 14),
-            prefixIcon: Icon(Icons.search_rounded,
-                color: _searchFocused
-                    ? NexusColors.neonCyan
-                    : NexusColors.textSecondary,
-                size: 20),
-            suffixIcon: _query.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    color: NexusColors.textDim,
-                    onPressed: () => setState(() => _query = ''),
-                  )
-                : null,
-            border: InputBorder.none,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCountBar(int total, int limited) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        children: [
-          Text(
-            '$total apps',
-            style: TextStyle(
-                fontSize: 11, color: NexusColors.textDim, letterSpacing: 0.5),
-          ),
-          const SizedBox(width: 6),
-          Container(
-              width: 3,
-              height: 3,
-              decoration: const BoxDecoration(
-                  shape: BoxShape.circle, color: NexusColors.textDim)),
-          const SizedBox(width: 6),
-          Text(
-            '$limited controlled',
-            style: TextStyle(
-                fontSize: 11, color: NexusColors.neonCyan, letterSpacing: 0.5),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLoader() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 40,
-            height: 40,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.5,
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(NexusColors.neonCyan),
+                  Text(
+                    'Add Limit',
+                    style: GoogleFonts.inter(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: c.text,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            'LOADING APPS...',
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 11,
-              color: NexusColors.textDim,
-              letterSpacing: 2,
+            const SizedBox(height: 12),
+
+            // ── Search bar ─────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                decoration: BoxDecoration(
+                  color: c.card,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: _focused ? c.accent : c.border,
+                    width: _focused ? 1.5 : 1,
+                  ),
+                  boxShadow: _focused
+                      ? [
+                          BoxShadow(
+                            color: c.accent.withValues(alpha: 0.1),
+                            blurRadius: 16,
+                          )
+                        ]
+                      : null,
+                ),
+                child: TextField(
+                  focusNode: _focusNode,
+                  onChanged: (v) => setState(() => _query = v),
+                  style: TextStyle(fontSize: 15, color: c.text),
+                  decoration: InputDecoration(
+                    hintText: 'Search apps...',
+                    hintStyle: TextStyle(color: c.textMuted, fontSize: 15),
+                    prefixIcon: Icon(Icons.search_rounded,
+                        color: _focused ? c.accent : c.textMuted, size: 20),
+                    suffixIcon: _query.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.close_rounded,
+                                size: 17, color: c.textMuted),
+                            onPressed: () => setState(() => _query = ''),
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                  ),
+                ),
+              ),
             ),
-          ),
-        ],
+
+            // ── Count row ──────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 2),
+              child: Row(
+                children: [
+                  Text(
+                    '${filtered.length} apps',
+                    style: TextStyle(fontSize: 12, color: c.textMuted),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                      width: 3,
+                      height: 3,
+                      decoration:
+                          BoxDecoration(shape: BoxShape.circle, color: c.textMuted)),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${blocked.length} controlled',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: c.accent,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+
+            // ── List ───────────────────────────────────────────────────────
+            Expanded(
+              child: tm.isLoadingApps
+                  ? Center(
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: c.accent),
+                    )
+                  : filtered.isEmpty
+                      ? Center(
+                          child: Text('No apps found',
+                              style: TextStyle(color: c.textSub)),
+                        )
+                      : ListView.builder(
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                          itemCount: filtered.length,
+                          itemBuilder: (_, i) {
+                            final app = filtered[i];
+                            final pkg = app['packageName'] as String;
+                            final name = app['name'] as String;
+                            final isSystem = app['isSystem'] as bool? ?? false;
+                            final limIdx =
+                                blocked.indexWhere((a) => a.packageName == pkg);
+                            final isLimited = limIdx != -1;
+                            final limit = isLimited ? blocked[limIdx] : null;
+                            return _AppTile(
+                              key: ValueKey(pkg),
+                              name: name,
+                              pkg: pkg,
+                              isSystem: isSystem,
+                              isLimited: isLimited,
+                              limit: limit,
+                              onToggle: (val) async {
+                                await tm.toggleAppBlock(app, val);
+                                if (mounted && val) {
+                                  _openSheet(pkg, name, tm, blocked);
+                                }
+                              },
+                              onEdit: () => _openSheet(pkg, name, tm, blocked),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildEmpty() {
-    return Center(
-      child: Text(
-        'No apps found',
-        style: TextStyle(color: NexusColors.textDim, fontSize: 14),
-      ),
-    );
-  }
-
-  void _openConfig(BuildContext ctx, String pkg, String name,
-      TimerManager tm, List<AppLimit> blocked) {
-    final limIdx = blocked.indexWhere((a) => a.packageName == pkg);
-    if (limIdx == -1) return;
+  void _openSheet(
+      String pkg, String name, TimerManager tm, List<AppLimit> blocked) {
+    final idx = blocked.indexWhere((a) => a.packageName == pkg);
+    if (idx == -1) return;
     showModalBottomSheet(
-      context: ctx,
+      context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _ConfigSheet(
-        limit: blocked[limIdx],
-        timerManager: tm,
-      ),
+      builder: (_) =>
+          _ConfigSheet(limit: blocked[idx], timerManager: tm),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Individual app tile
-// ─────────────────────────────────────────────────────────────────────────────
+// ── App tile ───────────────────────────────────────────────────────────────────
 class _AppTile extends StatelessWidget {
   final String name;
-  final String packageName;
+  final String pkg;
   final bool isSystem;
   final bool isLimited;
   final AppLimit? limit;
   final ValueChanged<bool> onToggle;
-  final VoidCallback onConfigure;
+  final VoidCallback onEdit;
 
   const _AppTile({
     super.key,
     required this.name,
-    required this.packageName,
+    required this.pkg,
     required this.isSystem,
     required this.isLimited,
     this.limit,
     required this.onToggle,
-    required this.onConfigure,
+    required this.onEdit,
   });
 
-  Color get _avatarColor {
-    final colors = [
-      NexusColors.neonBlue,
-      NexusColors.neonCyan,
-      NexusColors.neonPurple,
-      NexusColors.neonPink,
-      NexusColors.success,
-    ];
-    return colors[name.isNotEmpty ? name.codeUnitAt(0) % colors.length : 0];
-  }
+  static const _palette = [
+    Color(0xFF8B5CF6), Color(0xFF06B6D4), Color(0xFF10B981),
+    Color(0xFFF59E0B), Color(0xFFEF4444), Color(0xFF3B82F6),
+  ];
+
+  Color get _color =>
+      _palette[name.isNotEmpty ? name.codeUnitAt(0) % _palette.length : 0];
 
   @override
   Widget build(BuildContext context) {
-    final ac = _avatarColor;
-    return GestureDetector(
-      onTap: isLimited ? onConfigure : null,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(
-          color: isLimited
-              ? NexusColors.neonCyan.withOpacity(0.04)
-              : NexusColors.elevated,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isLimited
-                ? NexusColors.neonCyan.withOpacity(0.25)
-                : NexusColors.glassBorder,
-            width: 1.5,
-          ),
-          boxShadow: isLimited
-              ? [
-                  BoxShadow(
-                    color: NexusColors.neonCyan.withOpacity(0.05),
-                    blurRadius: 20,
-                  ),
-                ]
-              : null,
+    final c = CtrlColors.of(context);
+    final col = isLimited ? c.accent : _color;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: isLimited ? c.accentSurface.withValues(alpha: 0.5) : c.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isLimited ? c.accentBorder : c.border,
+          width: isLimited ? 1.5 : 1,
         ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              // Avatar
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(colors: [
-                    ac.withOpacity(0.22),
-                    ac.withOpacity(0.06),
-                  ]),
-                  border: Border.all(color: ac.withOpacity(0.3), width: 1.5),
-                ),
-                child: Center(
-                  child: Text(
-                    name.isNotEmpty ? name[0].toUpperCase() : '?',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: ac,
-                    ),
-                  ),
+      ),
+      child: Row(
+        children: [
+          // Avatar
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: col.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border:
+                  Border.all(color: col.withValues(alpha: 0.25), width: 1.5),
+            ),
+            child: Center(
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: col,
                 ),
               ),
-
-              const SizedBox(width: 12),
-
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            name,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: NexusColors.textBright,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: c.text,
                         ),
-                        if (isSystem)
-                          Container(
-                            margin: const EdgeInsets.only(left: 6),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 5, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: NexusColors.textDim.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text('SYS',
-                                style: TextStyle(
-                                    fontSize: 8,
-                                    color: NexusColors.textSecondary,
-                                    fontWeight: FontWeight.bold)),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      packageName,
-                      style: TextStyle(
-                          fontSize: 11, color: NexusColors.textDim),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (isLimited && limit != null) ...[
-                      const SizedBox(height: 5),
-                      Row(
-                        children: [
-                          Icon(Icons.timer_outlined,
-                              size: 11, color: NexusColors.neonCyan),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${limit!.limitMinutes}m limit  ·  ${limit!.cooldownMinutes >= 60 ? '${(limit!.cooldownMinutes / 60).toStringAsFixed(1)}h' : '${limit!.cooldownMinutes}m'} cooldown',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: NexusColors.neonCyan,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          GestureDetector(
-                            onTap: onConfigure,
-                            child: Text(
-                              'EDIT',
-                              style: TextStyle(
-                                fontSize: 9,
-                                color: NexusColors.neonCyan.withOpacity(0.7),
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.5,
-                                decoration: TextDecoration.underline,
-                                decorationColor:
-                                    NexusColors.neonCyan.withOpacity(0.5),
-                              ),
-                            ),
-                          ),
-                        ],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ],
+                    ),
+                    if (isSystem)
+                      Container(
+                        margin: const EdgeInsets.only(left: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: c.border,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text('SYS',
+                            style: TextStyle(
+                                fontSize: 8,
+                                fontWeight: FontWeight.w700,
+                                color: c.textMuted)),
+                      ),
                   ],
                 ),
-              ),
-
-              const SizedBox(width: 10),
-
-              // Custom toggle
-              _NexusSwitch(
-                value: isLimited,
-                onChanged: onToggle,
-              ),
-            ],
+                if (isLimited && limit != null) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Text(
+                        '${limit!.limitMinutes}m limit  ·  ${limit!.cooldownMinutes >= 60 ? '${(limit!.cooldownMinutes / 60).toStringAsFixed(1)}h' : '${limit!.cooldownMinutes}m'} reset',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: c.accent,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: onEdit,
+                        child: Text(
+                          'Edit',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: c.textSub,
+                            decoration: TextDecoration.underline,
+                            decorationColor: c.textSub,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  const SizedBox(height: 2),
+                  Text(pkg,
+                      style: TextStyle(fontSize: 11, color: c.textMuted),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ],
+              ],
+            ),
           ),
-        ),
+          const SizedBox(width: 10),
+          _SwitchPill(value: isLimited, accent: c.accent, onToggle: onToggle),
+        ],
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Custom animated toggle switch
-// ─────────────────────────────────────────────────────────────────────────────
-class _NexusSwitch extends StatelessWidget {
+// ── Pill toggle ────────────────────────────────────────────────────────────────
+class _SwitchPill extends StatelessWidget {
   final bool value;
-  final ValueChanged<bool> onChanged;
-  const _NexusSwitch({required this.value, required this.onChanged});
+  final Color accent;
+  final ValueChanged<bool> onToggle;
+  const _SwitchPill({required this.value, required this.accent, required this.onToggle});
 
   @override
   Widget build(BuildContext context) {
+    final trackOff = Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFF2C2C2E)
+        : const Color(0xFFE5E5EA);
     return GestureDetector(
-      onTap: () => onChanged(!value),
+      onTap: () => onToggle(!value),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 250),
         width: 48,
         height: 28,
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          gradient: value ? NexusColors.cyberGradient : null,
-          color: value ? null : NexusColors.overlay,
-          boxShadow: value
-              ? [
-                  BoxShadow(
-                    color: NexusColors.neonCyan.withOpacity(0.35),
-                    blurRadius: 10,
-                  ),
-                ]
-              : null,
+          color: value ? accent : trackOff,
         ),
         child: AnimatedAlign(
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeInOut,
+          duration: const Duration(milliseconds: 250),
           alignment: value ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(
             width: 22,
             height: 22,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: value ? NexusColors.void_ : NexusColors.textDim,
+              color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 4,
-                  offset: const Offset(0, 1),
-                ),
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1))
               ],
             ),
           ),
@@ -522,9 +403,7 @@ class _NexusSwitch extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Configuration bottom sheet
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Config bottom sheet ────────────────────────────────────────────────────────
 class _ConfigSheet extends StatefulWidget {
   final AppLimit limit;
   final TimerManager timerManager;
@@ -551,51 +430,52 @@ class _ConfigSheetState extends State<_ConfigSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final c = CtrlColors.of(context);
     return Container(
-      decoration: const BoxDecoration(
-        color: NexusColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // drag handle
           const SizedBox(height: 12),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: NexusColors.overlay,
-              borderRadius: BorderRadius.circular(2),
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: c.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
-          const SizedBox(height: 20),
-
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: EdgeInsets.fromLTRB(
+                22, 20, 22, MediaQuery.of(context).viewInsets.bottom + 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // App header
                 Row(
                   children: [
                     Container(
-                      width: 40,
-                      height: 40,
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: NexusColors.neonCyan.withOpacity(0.12),
-                        border: Border.all(
-                            color: NexusColors.neonCyan.withOpacity(0.3)),
+                        color: c.accentSurface,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: c.accentBorder),
                       ),
                       child: Center(
                         child: Text(
                           widget.limit.appName.isNotEmpty
                               ? widget.limit.appName[0].toUpperCase()
                               : '?',
-                          style: GoogleFonts.spaceGrotesk(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: NexusColors.neonCyan,
+                          style: GoogleFonts.inter(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: c.accent,
                           ),
                         ),
                       ),
@@ -604,112 +484,44 @@ class _ConfigSheetState extends State<_ConfigSheet> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          widget.limit.appName,
-                          style: GoogleFonts.spaceGrotesk(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: NexusColors.textBright,
-                          ),
-                        ),
-                        Text(
-                          'Configure time limit',
-                          style: TextStyle(
-                              fontSize: 12, color: NexusColors.textDim),
-                        ),
+                        Text(widget.limit.appName,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: c.text)),
+                        Text('Configure time limit',
+                            style:
+                                TextStyle(fontSize: 12, color: c.textSub)),
                       ],
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 28),
 
-                // ── Daily limit slider ─────────────────────────────────
-                _SliderRow(
-                  icon: Icons.timer_outlined,
-                  iconColor: NexusColors.neonCyan,
-                  label: 'DAILY LIMIT',
-                  value: '$_limitMin min',
-                  valueColor: NexusColors.neonCyan,
-                ),
-                const SizedBox(height: 4),
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: NexusColors.neonCyan,
-                    inactiveTrackColor: NexusColors.overlay,
-                    thumbColor: NexusColors.neonCyan,
-                    overlayColor: NexusColors.neonCyan.withOpacity(0.12),
-                    trackHeight: 3,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-                  ),
-                  child: Slider(
-                    value: _limitMin.toDouble(),
-                    min: 1,
-                    max: 120,
-                    divisions: 119,
-                    onChanged: (v) => setState(() => _limitMin = v.toInt()),
-                  ),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('1 min',
-                        style: TextStyle(
-                            fontSize: 10, color: NexusColors.textDim)),
-                    Text('2 hours',
-                        style: TextStyle(
-                            fontSize: 10, color: NexusColors.textDim)),
-                  ],
-                ),
+                // Daily limit
+                _sliderLabel(c, 'Daily Limit', '$_limitMin min', c.accent),
+                const SizedBox(height: 6),
+                _styledSlider(c, _limitMin.toDouble(), 1, 120, 119, c.accent,
+                    (v) => setState(() => _limitMin = v.toInt())),
+                _sliderRange(c, '1 min', '2 hours'),
+                const SizedBox(height: 22),
 
-                const SizedBox(height: 24),
-
-                // ── Cooldown slider ────────────────────────────────────
-                _SliderRow(
-                  icon: Icons.restore_rounded,
-                  iconColor: NexusColors.neonPurple,
-                  label: 'RESET AFTER',
-                  value: _fmtCooldown(_cooldownMin),
-                  valueColor: NexusColors.neonPurple,
-                ),
-                const SizedBox(height: 4),
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: NexusColors.neonPurple,
-                    inactiveTrackColor: NexusColors.overlay,
-                    thumbColor: NexusColors.neonPurple,
-                    overlayColor: NexusColors.neonPurple.withOpacity(0.12),
-                    trackHeight: 3,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-                  ),
-                  child: Slider(
-                    value: _cooldownMin.toDouble(),
-                    min: 5,
-                    max: 360,
-                    divisions: 71,
-                    onChanged: (v) => setState(() => _cooldownMin = v.toInt()),
-                  ),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('5 min',
-                        style: TextStyle(
-                            fontSize: 10, color: NexusColors.textDim)),
-                    Text('6 hours',
-                        style: TextStyle(
-                            fontSize: 10, color: NexusColors.textDim)),
-                  ],
-                ),
-
+                // Cooldown
+                _sliderLabel(c, 'Reset After', _fmtCooldown(_cooldownMin),
+                    kColorWarning),
+                const SizedBox(height: 6),
+                _styledSlider(c, _cooldownMin.toDouble(), 5, 360, 71,
+                    kColorWarning,
+                    (v) => setState(() => _cooldownMin = v.toInt())),
+                _sliderRange(c, '5 min', '6 hours'),
                 const SizedBox(height: 28),
 
-                // ── Apply button ───────────────────────────────────────
+                // Apply
                 SizedBox(
                   width: double.infinity,
                   height: 52,
-                  child: GestureDetector(
-                    onTap: _saving
+                  child: ElevatedButton(
+                    onPressed: _saving
                         ? null
                         : () async {
                             setState(() => _saving = true);
@@ -721,45 +533,24 @@ class _ConfigSheetState extends State<_ConfigSheet> {
                             );
                             if (mounted) nav.pop();
                           },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: NexusColors.cyberGradient,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: NexusColors.neonCyan.withOpacity(0.35),
-                            blurRadius: 20,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                      ),
-                      child: Center(
-                        child: _saving
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      NexusColors.void_),
-                                ),
-                              )
-                            : Text(
-                                'APPLY SETTINGS',
-                                style: GoogleFonts.spaceGrotesk(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w900,
-                                  color: NexusColors.void_,
-                                  letterSpacing: 2,
-                                ),
-                              ),
-                      ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: c.accent,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      elevation: 0,
                     ),
+                    child: _saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Text('Apply',
+                            style: TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w700)),
                   ),
                 ),
-
-                SizedBox(
-                    height: MediaQuery.of(context).viewInsets.bottom + 24),
               ],
             ),
           ),
@@ -767,79 +558,57 @@ class _ConfigSheetState extends State<_ConfigSheet> {
       ),
     );
   }
-}
 
-// ── Helper for slider section header ─────────────────────────────────────────
-class _SliderRow extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String label;
-  final String value;
-  final Color valueColor;
-  const _SliderRow({
-    required this.icon,
-    required this.iconColor,
-    required this.label,
-    required this.value,
-    required this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _sliderLabel(
+      CtrlColors c, String title, String value, Color valueColor) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            Icon(icon, size: 14, color: iconColor),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: NexusColors.textDim,
-                letterSpacing: 1.5,
-              ),
-            ),
-          ],
-        ),
-        Text(
-          value,
-          style: GoogleFonts.spaceGrotesk(
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-            color: valueColor,
-          ),
-        ),
+        Text(title,
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: c.textSub)),
+        Text(value,
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: valueColor)),
       ],
     );
   }
-}
 
-// ── Static aurora for app selector background ─────────────────────────────────
-class _StaticAurora extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    _orb(canvas, size, 0.15, 0.22, size.width * 0.5,
-        const Color(0xFF0D47A1), 0.14);
-    _orb(canvas, size, 0.80, 0.15, size.width * 0.45,
-        const Color(0xFF4A148C), 0.10);
-  }
-
-  void _orb(Canvas canvas, Size size, double dx, double dy, double r,
-      Color color, double opacity) {
-    final center = Offset(size.width * dx, size.height * dy);
-    canvas.drawCircle(
-      center,
-      r,
-      Paint()
-        ..shader = RadialGradient(
-          colors: [color.withOpacity(opacity), Colors.transparent],
-        ).createShader(Rect.fromCircle(center: center, radius: r)),
+  Widget _styledSlider(CtrlColors c, double value, double min, double max,
+      int div, Color color, ValueChanged<double> onChanged) {
+    return SliderTheme(
+      data: SliderTheme.of(context).copyWith(
+        activeTrackColor: color,
+        inactiveTrackColor: c.border,
+        thumbColor: color,
+        overlayColor: color.withValues(alpha: 0.1),
+        trackHeight: 3,
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+      ),
+      child: Slider(
+        value: value,
+        min: min,
+        max: max,
+        divisions: div,
+        onChanged: onChanged,
+      ),
     );
   }
 
-  @override
-  bool shouldRepaint(_StaticAurora old) => false;
+  Widget _sliderRange(CtrlColors c, String lo, String hi) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(lo, style: TextStyle(fontSize: 10, color: c.textMuted)),
+          Text(hi, style: TextStyle(fontSize: 10, color: c.textMuted)),
+        ],
+      ),
+    );
+  }
 }
