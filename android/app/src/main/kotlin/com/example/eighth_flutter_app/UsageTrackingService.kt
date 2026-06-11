@@ -16,9 +16,21 @@ class UsageTrackingService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isRunning = true
 
+    // Foreground app state — persisted between ticks so usage tracks continuously
+    private var lastKnownForeground: String? = null
+    private var isInitialized = false
+    private var lastFullRefreshTime = 0L
+
+    // Debounce block attempts so we don't spam the accessibility service
+    private var lastBlockAttemptTime = 0L
+
     companion object {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "usage_tracking_channel"
+        private const val BLOCK_DEBOUNCE_MS = 2000L
+        private const val FULL_REFRESH_INTERVAL_MS = 30_000L
+        private const val LOOKBACK_INIT_MS = 30 * 60 * 1000L // 30 min for init
+        private const val LOOKBACK_TICK_MS = 3000L           // 3 s for normal ticks
     }
 
     override fun onCreate() {
@@ -35,11 +47,8 @@ class UsageTrackingService : Service() {
                 CHANNEL_ID,
                 "Usage Tracking",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Keeps the app blocker running"
-            }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            ).apply { description = "Keeps the app blocker running" }
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
 
@@ -55,81 +64,113 @@ class UsageTrackingService : Service() {
             while (isRunning) {
                 val currentApp = getForegroundPackage()
                 if (currentApp != null && isBlockedApp(currentApp)) {
-                    val usedTime = getUsedTimeToday(currentApp)
-                    val limit = getAppLimit(currentApp)
-                    val cooldown = getAppCooldown(currentApp)
+                    val limit       = getAppLimit(currentApp)
+                    val cooldown    = getAppCooldown(currentApp)
                     val lastBlocked = getLastBlockedTime(currentApp)
-                    val currentTime = System.currentTimeMillis()
-
-                    val inCooldown = lastBlocked > 0L && (currentTime - lastBlocked) < cooldown
+                    val now         = System.currentTimeMillis()
+                    val inCooldown  = lastBlocked > 0L && (now - lastBlocked) < cooldown
 
                     if (inCooldown) {
-                        // In cooldown block period: Block the app immediately!
-                        blockApp(currentApp)
+                        // Still in cooldown — keep blocking
+                        if (now - lastBlockAttemptTime > BLOCK_DEBOUNCE_MS) {
+                            lastBlockAttemptTime = now
+                            blockApp(currentApp)
+                        }
                     } else {
-                        // Cooldown has expired (or was never blocked)
                         if (lastBlocked > 0L) {
-                            // Cooldown expired! Reset stats for a new session
+                            // Cooldown expired — reset for a fresh session
                             resetUsage(currentApp)
                         }
-
-                        // Fetch used time again since it might have been reset
-                        val currentUsed = getUsedTimeToday(currentApp)
-                        if (currentUsed >= limit) {
-                            // Just hit the limit: trigger block and start cooldown
+                        val usedNow = getUsedTimeToday(currentApp)
+                        if (usedNow >= limit) {
                             markBlockedStart(currentApp)
-                            blockApp(currentApp)
+                            if (now - lastBlockAttemptTime > BLOCK_DEBOUNCE_MS) {
+                                lastBlockAttemptTime = now
+                                blockApp(currentApp)
+                            }
                         } else {
-                            // Still within limit: increment usage
                             incrementUsage(currentApp)
                         }
                     }
                 }
-                delay(1000) // check every second
+                delay(1000)
             }
         }
     }
 
+    /**
+     * Returns the package currently in the foreground, or null if the user is on
+     * the home screen / launcher.
+     *
+     * Strategy:
+     *  - On first call (or every 30 s): replay the last 30 min of RESUME/PAUSE events
+     *    to establish the true current foreground app.
+     *  - On subsequent calls: only inspect the last 3 s for state changes.
+     *  - Maintains [lastKnownForeground] between ticks so an app that is quietly
+     *    running in the foreground continues to accumulate usage (fixes the original
+     *    10-second window bug that caused YouTube usage to stop tracking).
+     */
     private fun getForegroundPackage(): String? {
-        val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val usm     = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val endTime = System.currentTimeMillis()
-        val beginTime = endTime - 10000 // last 10 seconds
-        val events = usageStatsManager.queryEvents(beginTime, endTime)
-        var lastForegroundPackage: String? = null
-        var lastEventTime = 0L
-        val event = UsageEvents.Event()
-        while (events.hasNextEvent()) {
-            events.getNextEvent(event)
-            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
-                if (event.timeStamp > lastEventTime) {
-                    lastEventTime = event.timeStamp
-                    lastForegroundPackage = event.packageName
+        val doFull  = !isInitialized || (endTime - lastFullRefreshTime) > FULL_REFRESH_INTERVAL_MS
+        val begin   = endTime - if (doFull) LOOKBACK_INIT_MS else LOOKBACK_TICK_MS
+
+        val events = usm.queryEvents(begin, endTime)
+        val ev     = UsageEvents.Event()
+
+        if (doFull) {
+            // Replay full window to find the most-recent foreground app
+            var latestTs = 0L
+            while (events.hasNextEvent()) {
+                events.getNextEvent(ev)
+                when (ev.eventType) {
+                    UsageEvents.Event.ACTIVITY_RESUMED -> {
+                        if (ev.timeStamp >= latestTs) {
+                            latestTs = ev.timeStamp
+                            lastKnownForeground = ev.packageName
+                        }
+                    }
+                    UsageEvents.Event.ACTIVITY_PAUSED -> {
+                        if (ev.packageName == lastKnownForeground && ev.timeStamp >= latestTs) {
+                            latestTs = ev.timeStamp
+                            lastKnownForeground = null
+                        }
+                    }
+                }
+            }
+            isInitialized        = true
+            lastFullRefreshTime  = endTime
+        } else {
+            // Incremental: only apply changes from the last 3 seconds
+            while (events.hasNextEvent()) {
+                events.getNextEvent(ev)
+                when (ev.eventType) {
+                    UsageEvents.Event.ACTIVITY_RESUMED -> lastKnownForeground = ev.packageName
+                    UsageEvents.Event.ACTIVITY_PAUSED  -> {
+                        if (ev.packageName == lastKnownForeground) lastKnownForeground = null
+                    }
                 }
             }
         }
-        return lastForegroundPackage
+
+        return lastKnownForeground
     }
 
-    private fun isBlockedApp(pkg: String): Boolean {
-        val blockedSet = sharedPrefs.getStringSet("blocked_apps", emptySet()) ?: emptySet()
-        return blockedSet.contains(pkg)
-    }
+    private fun isBlockedApp(pkg: String): Boolean =
+        (sharedPrefs.getStringSet("blocked_apps", emptySet()) ?: emptySet()).contains(pkg)
 
-    private fun getAppLimit(pkg: String): Long {
-        return sharedPrefs.getLong("limit_$pkg", 30 * 60 * 1000L) // default 30 min
-    }
+    private fun getAppLimit(pkg: String): Long =
+        sharedPrefs.getLong("limit_$pkg", 30 * 60 * 1000L)
 
-    private fun getAppCooldown(pkg: String): Long {
-        return sharedPrefs.getLong("cooldown_$pkg", 4 * 60 * 60 * 1000L) // default 4 hours
-    }
+    private fun getAppCooldown(pkg: String): Long =
+        sharedPrefs.getLong("cooldown_$pkg", 4 * 60 * 60 * 1000L)
 
-    private fun getUsedTimeToday(pkg: String): Long {
-        return sharedPrefs.getLong("used_$pkg", 0L)
-    }
+    private fun getUsedTimeToday(pkg: String): Long =
+        sharedPrefs.getLong("used_$pkg", 0L)
 
-    private fun getLastBlockedTime(pkg: String): Long {
-        return sharedPrefs.getLong("last_blocked_$pkg", 0L)
-    }
+    private fun getLastBlockedTime(pkg: String): Long =
+        sharedPrefs.getLong("last_blocked_$pkg", 0L)
 
     private fun incrementUsage(pkg: String) {
         val current = sharedPrefs.getLong("used_$pkg", 0L)
@@ -137,10 +178,10 @@ class UsageTrackingService : Service() {
     }
 
     private fun resetUsage(pkg: String) {
-        sharedPrefs.edit().apply {
-            putLong("used_$pkg", 0L)
-            putLong("last_blocked_$pkg", 0L)
-        }.apply()
+        sharedPrefs.edit()
+            .putLong("used_$pkg", 0L)
+            .putLong("last_blocked_$pkg", 0L)
+            .apply()
     }
 
     private fun markBlockedStart(pkg: String) {
@@ -148,9 +189,8 @@ class UsageTrackingService : Service() {
     }
 
     private fun blockApp(pkg: String) {
-        val intent = Intent(this, BlockAccessibilityService::class.java)
-        intent.putExtra("block_package", pkg)
-        startService(intent)
+        startService(Intent(this, BlockAccessibilityService::class.java)
+            .putExtra("block_package", pkg))
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
