@@ -65,9 +65,9 @@ class _HomeScreenState extends State<HomeScreen>
     final tm = Provider.of<TimerManager>(context);
     final tn = Provider.of<ThemeNotifier>(context);
     final apps = tm.blockedApps;
-    final isReady = tm.hasUsagePermission &&
-        tm.hasAccessibilityPermission &&
-        tm.hasNotificationPermission;
+    // Notification permission is desirable but not required for tracking to work.
+    // Only the two essential permissions gate the shield toggle.
+    final isReady = tm.hasUsagePermission && tm.hasAccessibilityPermission;
 
     return Scaffold(
       backgroundColor: c.bg,

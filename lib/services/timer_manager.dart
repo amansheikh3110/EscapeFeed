@@ -36,8 +36,15 @@ class TimerManager extends ChangeNotifier {
     await loadInstalledApps();
     await loadUsageStats();
     await checkServiceStatus();
-    
-    // Start periodic polling for usage stats updates
+
+    // Auto-start the tracking service whenever the two essential permissions
+    // are already granted (usage stats + accessibility).  The user should not
+    // have to manually press the shield toggle each time the app opens.
+    if (_hasUsagePermission && _hasAccessibilityPermission && !_isTrackingActive) {
+      await UsageTracker.startTracking();
+      _isTrackingActive = true;
+    }
+
     startPolling();
   }
 
