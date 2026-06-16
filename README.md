@@ -25,7 +25,7 @@ Pick any app on your phone, give it a daily time budget, and the moment that bud
 
 ## ✨ Features
 
-| | |
+| Feature | Details |
 |---|---|
 | ⏱️ **Real-time usage tracking** | Foreground-app detection that keeps tracking accurately even during long, uninterrupted sessions — not just the first few seconds of app use. |
 | 🚫 **Automatic enforcement** | When the limit hits zero, an Android Accessibility Service instantly sends the offending app home — no "are you sure?" dialog, no way to ignore it. |
