@@ -3,6 +3,7 @@ Addiction to shorts, not anymore
 A new Flutter project.
 
 ## Getting Started
+i made this project with flutter / dart
 
 This project is a starting point for a Flutter application.
 
