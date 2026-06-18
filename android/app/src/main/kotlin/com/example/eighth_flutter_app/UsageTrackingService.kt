@@ -71,7 +71,9 @@ class UsageTrackingService : Service() {
         val pkg = getForegroundPackage() ?: return
         if (!isBlockedApp(pkg)) return
 
-        val limit       = sharedPrefs.getLong("limit_$pkg",        30 * 60 * 1000L)
+        val baseLimit   = sharedPrefs.getLong("limit_$pkg",        30 * 60 * 1000L)
+        val earnedTime  = sharedPrefs.getLong("earned_time_$pkg",  0L)
+        val limit       = baseLimit + earnedTime
         val cooldown    = sharedPrefs.getLong("cooldown_$pkg",      4 * 60 * 60 * 1000L)
         val lastBlocked = sharedPrefs.getLong("last_blocked_$pkg",  0L)
         val now         = System.currentTimeMillis()
@@ -168,6 +170,7 @@ class UsageTrackingService : Service() {
         sharedPrefs.edit()
             .putLong("used_$pkg",          0L)
             .putLong("last_blocked_$pkg",  0L)
+            .putLong("earned_time_$pkg",   0L)
             .apply()
     }
 

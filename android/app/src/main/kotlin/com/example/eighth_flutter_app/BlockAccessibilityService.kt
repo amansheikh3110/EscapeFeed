@@ -96,10 +96,12 @@ class BlockAccessibilityService : AccessibilityService() {
     private fun shouldBlock(pkg: String): Boolean {
         val blocked = prefs.getStringSet("blocked_apps", emptySet()) ?: emptySet()
         if (!blocked.contains(pkg)) return false
-        val used        = prefs.getLong("used_$pkg",         0L)
-        val limit       = prefs.getLong("limit_$pkg",        30 * 60 * 1000L)
-        val lastBlocked = prefs.getLong("last_blocked_$pkg", 0L)
-        val cooldown    = prefs.getLong("cooldown_$pkg",     4 * 60 * 60 * 1000L)
+        val used        = prefs.getLong("used_$pkg",          0L)
+        val baseLimit   = prefs.getLong("limit_$pkg",         30 * 60 * 1000L)
+        val earnedTime  = prefs.getLong("earned_time_$pkg",   0L)
+        val limit       = baseLimit + earnedTime
+        val lastBlocked = prefs.getLong("last_blocked_$pkg",  0L)
+        val cooldown    = prefs.getLong("cooldown_$pkg",      4 * 60 * 60 * 1000L)
         val inCooldown  = lastBlocked > 0L && (System.currentTimeMillis() - lastBlocked) < cooldown
         return inCooldown || used >= limit
     }
@@ -126,9 +128,11 @@ class BlockAccessibilityService : AccessibilityService() {
     }
 
     private fun buildSessionNotif(pkg: String): android.app.Notification {
-        val used      = prefs.getLong("used_$pkg",  0L)
-        val limit     = prefs.getLong("limit_$pkg", 30 * 60 * 1000L)
-        val remaining = (limit - used).coerceAtLeast(0L)
+        val used       = prefs.getLong("used_$pkg",         0L)
+        val baseLimit  = prefs.getLong("limit_$pkg",        30 * 60 * 1000L)
+        val earnedTime = prefs.getLong("earned_time_$pkg",  0L)
+        val limit      = baseLimit + earnedTime
+        val remaining  = (limit - used).coerceAtLeast(0L)
         val label     = getAppLabel(pkg)
 
         val builder = NotificationCompat.Builder(this, SESSION_CHANNEL_ID)

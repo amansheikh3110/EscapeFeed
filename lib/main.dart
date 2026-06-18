@@ -5,8 +5,12 @@ import 'package:provider/provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/app_selector_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/stats_screen.dart';
+import 'screens/earn_time_screen.dart';
 import 'services/timer_manager.dart';
 import 'services/theme_notifier.dart';
+import 'services/gamification_service.dart';
+import 'models/app_limit.dart';
 import 'utils/constants.dart';
 
 void main() {
@@ -20,6 +24,7 @@ void main() {
       providers: [
         ChangeNotifierProvider(create: (_) => TimerManager()),
         ChangeNotifierProvider(create: (_) => ThemeNotifier()),
+        ChangeNotifierProvider(create: (_) => GamificationService()),
       ],
       child: const CtrlApp(),
     ),
@@ -43,6 +48,16 @@ class CtrlApp extends StatelessWidget {
         '/': (_) => const HomeScreen(),
         '/selector': (_) => const AppSelectorScreen(),
         '/settings': (_) => const SettingsScreen(),
+        '/stats': (_) => const StatsScreen(),
+      },
+      onGenerateRoute: (settings) {
+        if (settings.name == '/earn-time') {
+          final app = settings.arguments as AppLimit;
+          return MaterialPageRoute(
+            builder: (_) => EarnTimeScreen(app: app),
+          );
+        }
+        return null;
       },
     );
   }

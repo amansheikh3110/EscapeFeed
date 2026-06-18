@@ -32,6 +32,10 @@ Pick any app on your phone, give it a daily time budget, and the moment that bud
 | 🔔 **Live countdown notification** | The instant a tracked app opens, a persistent status-bar notification appears with a real countdown to your limit. Leave the app and it vanishes; come back and it picks up exactly where it left off. |
 | ❄️ **Cooldown periods** | Hit your limit and the app is locked for a configurable cooldown window (default 4h) before usage resets — no more "just one more minute" loopholes. |
 | 📱 **Any app, including YouTube** | Full package-visibility support for Android 11+ — every launchable app on the device shows up in the picker, system apps included. |
+| 🔥 **Streak tracker** | Counts consecutive days you stayed within all limits. Break the chain and it resets — keep it alive for Iron Will (7d) and Digital Monk (30d) badges. |
+| 🎯 **Focus score** | A 0–100 daily score derived from how far under your limits you stayed, shown as a radial progress ring. |
+| 🏆 **Achievements** | First Step, Iron Will, Digital Monk, Early Bird, and Problem Solver — unlocked automatically as you hit milestones. |
+| ⚡ **Earn extra time** | Complete a 3-question math puzzle or a 3-cycle guided breathing exercise to earn +5 minutes of extra allowance for any app. |
 | 🌗 **Light & dark mode** | A clean, modern UI with a fully theme-aware design system (`CtrlColors`) and persisted user preference. |
 | 🔋 **Boots with your phone** | A `BOOT_COMPLETED` receiver keeps protection active across restarts. |
 | 🛡️ **Local-only, private** | No accounts, no servers, no analytics. Every byte of usage data lives in `SharedPreferences` on your device. |
@@ -98,14 +102,19 @@ dart run flutter_launcher_icons
 
 ```
 lib/
-├── main.dart                     # App entry, theming, providers
-├── models/app_limit.dart         # AppLimit data model
+├── main.dart                     # App entry, theming, providers, routes
+├── models/
+│   ├── app_limit.dart            # AppLimit data model
+│   └── achievement.dart          # Achievement model + catalog
 ├── services/
 │   ├── timer_manager.dart        # Dart-side orchestration & polling
 │   ├── usage_tracker.dart        # MethodChannel bridge to native code
+│   ├── gamification_service.dart # Streak, focus score, achievements
 │   └── theme_notifier.dart       # Light/dark mode persistence
 ├── screens/
-│   ├── home_screen.dart          # Shield status + tracked app list
+│   ├── home_screen.dart          # Shield status + tracked app list + gamification strip
+│   ├── stats_screen.dart         # Streak, focus score ring, achievements grid
+│   ├── earn_time_screen.dart     # Math puzzle + breathing exercise to earn +5 min
 │   ├── app_selector_screen.dart  # Pick apps & configure limits
 │   └── settings_screen.dart      # Permissions, theme, dev tools
 └── utils/constants.dart          # CtrlColors design system
