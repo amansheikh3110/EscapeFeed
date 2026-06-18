@@ -2,7 +2,12 @@
 
 <img src="lib/assets/app_icon_1.png" alt="ctrl. app icon" width="120" />
 
+<<<<<<< HEAD
 # ctrl.
+=======
+## Getting Started
+i made this project with flutter / dart
+>>>>>>> 3f660677793baababfc39d3977fee443c7a71b48
 
 ### Take back control of your screen time.
 

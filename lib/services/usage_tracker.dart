@@ -111,4 +111,20 @@ class UsageTracker {
       // Handle error
     }
   }
+
+  // Adds earned minutes to a package's daily allowance (persisted natively so
+  // both UsageTrackingService and BlockAccessibilityService see the new limit).
+  static Future<void> saveEarnedTime({
+    required String packageName,
+    required int minutes,
+  }) async {
+    try {
+      await _channel.invokeMethod('saveEarnedTime', {
+        'packageName': packageName,
+        'milliseconds': minutes * 60 * 1000,
+      });
+    } on PlatformException catch (_) {
+      // ignore
+    }
+  }
 }
