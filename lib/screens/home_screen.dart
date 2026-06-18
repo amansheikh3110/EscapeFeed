@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../services/timer_manager.dart';
 import '../services/theme_notifier.dart';
+import '../services/gamification_service.dart';
 import '../models/app_limit.dart';
 import '../utils/constants.dart';
 import '../services/usage_tracker.dart';
@@ -30,6 +31,13 @@ class _HomeScreenState extends State<HomeScreen>
     _dotOpacity = Tween<double>(begin: 0.4, end: 1.0).animate(
       CurvedAnimation(parent: _dotCtrl, curve: Curves.easeInOut),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshGamification());
+  }
+
+  void _refreshGamification() {
+    final tm = Provider.of<TimerManager>(context, listen: false);
+    final gs = Provider.of<GamificationService>(context, listen: false);
+    gs.refresh(tm.blockedApps);
   }
 
   @override
@@ -46,6 +54,7 @@ class _HomeScreenState extends State<HomeScreen>
       tm.checkPermissions();
       tm.loadUsageStats();
       tm.checkServiceStatus();
+      _refreshGamification();
     }
   }
 
@@ -64,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen>
     final c = CtrlColors.of(context);
     final tm = Provider.of<TimerManager>(context);
     final tn = Provider.of<ThemeNotifier>(context);
+    final gs = Provider.of<GamificationService>(context);
     final apps = tm.blockedApps;
     // Notification permission is desirable but not required for tracking to work.
     // Only the two essential permissions gate the shield toggle.
@@ -87,7 +97,9 @@ class _HomeScreenState extends State<HomeScreen>
                       const SizedBox(height: 16),
                     ],
                     _buildShieldCard(c, tm, isReady),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 12),
+                    _buildGamificationStrip(c, gs),
+                    const SizedBox(height: 20),
                     _buildSectionHeader(c, 'YOUR APPS', apps.length),
                     const SizedBox(height: 10),
                     if (apps.isEmpty)
@@ -151,6 +163,13 @@ class _HomeScreenState extends State<HomeScreen>
             color: c.textSub,
             bgColor: c.card,
             onTap: tn.toggle,
+          ),
+          const SizedBox(width: 8),
+          _HeaderBtn(
+            icon: Icons.bar_chart_rounded,
+            color: c.textSub,
+            bgColor: c.card,
+            onTap: () => Navigator.pushNamed(context, '/stats'),
           ),
           const SizedBox(width: 8),
           _HeaderBtn(
@@ -259,6 +278,72 @@ class _HomeScreenState extends State<HomeScreen>
             },
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Gamification strip ──────────────────────────────────────────────────────
+  Widget _buildGamificationStrip(CtrlColors c, GamificationService gs) {
+    final streak = gs.streak;
+    final score  = gs.focusScore;
+    final scoreColor = score >= 75
+        ? kColorSuccess
+        : score >= 40
+            ? kColorWarning
+            : kColorDanger;
+
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(context, '/stats'),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: c.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: c.border),
+        ),
+        child: Row(
+          children: [
+            // Streak
+            Text(streak > 0 ? '🔥' : '💤',
+                style: const TextStyle(fontSize: 20)),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$streak day streak',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: streak > 0 ? kColorWarning : c.textSub),
+                ),
+                Text('Streak',
+                    style: TextStyle(fontSize: 10, color: c.textMuted)),
+              ],
+            ),
+            const Spacer(),
+            Container(width: 1, height: 30, color: c.border),
+            const Spacer(),
+            // Focus score
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${score.round()} / 100',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: scoreColor),
+                ),
+                Text('Focus Score',
+                    style: TextStyle(fontSize: 10, color: c.textMuted)),
+              ],
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.arrow_forward_ios_rounded,
+                size: 12, color: c.textMuted),
+          ],
+        ),
       ),
     );
   }
@@ -453,6 +538,31 @@ class _HomeScreenState extends State<HomeScreen>
                 onTap: () => _showResetDialog(c, app, tm),
                 child: Icon(Icons.lock_open_rounded,
                     size: 16, color: c.textMuted),
+              ),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: () => Navigator.pushNamed(
+                  context,
+                  '/earn-time',
+                  arguments: app,
+                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 7, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: c.accent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: c.accent.withValues(alpha: 0.3), width: 1),
+                  ),
+                  child: Text(
+                    '⚡ Earn',
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: c.accent),
+                  ),
+                ),
               ),
             ],
           ),

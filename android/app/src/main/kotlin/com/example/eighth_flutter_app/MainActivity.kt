@@ -68,13 +68,15 @@ class MainActivity: FlutterActivity() {
                     val prefs = getSharedPreferences("app_limits", Context.MODE_PRIVATE)
                     val blockedApps = prefs.getStringSet("blocked_apps", emptySet()) ?: emptySet()
                     val stats = mutableMapOf<String, Map<String, Any>>()
-                    
+
                     for (pkg in blockedApps) {
-                        val limit = prefs.getLong("limit_$pkg", 30 * 60 * 1000L) // default 30 min
-                        val used = prefs.getLong("used_$pkg", 0L)
+                        val baseLimit   = prefs.getLong("limit_$pkg", 30 * 60 * 1000L)
+                        val earnedTime  = prefs.getLong("earned_time_$pkg", 0L)
+                        val limit       = baseLimit + earnedTime
+                        val used        = prefs.getLong("used_$pkg", 0L)
                         val lastBlocked = prefs.getLong("last_blocked_$pkg", 0L)
-                        val cooldown = prefs.getLong("cooldown_$pkg", 4 * 60 * 60 * 1000L) // default 4 hours
-                        
+                        val cooldown    = prefs.getLong("cooldown_$pkg", 4 * 60 * 60 * 1000L)
+
                         stats[pkg] = mapOf(
                             "limit" to limit,
                             "used" to used,
@@ -90,6 +92,7 @@ class MainActivity: FlutterActivity() {
                     prefs.edit().apply {
                         putLong("used_$pkg", 0L)
                         putLong("last_blocked_$pkg", 0L)
+                        putLong("earned_time_$pkg", 0L)
                     }.apply()
                     result.success(null)
                 }
@@ -100,8 +103,17 @@ class MainActivity: FlutterActivity() {
                     for (pkg in blockedApps) {
                         editor.putLong("used_$pkg", 0L)
                         editor.putLong("last_blocked_$pkg", 0L)
+                        editor.putLong("earned_time_$pkg", 0L)
                     }
                     editor.apply()
+                    result.success(null)
+                }
+                "saveEarnedTime" -> {
+                    val pkg = call.argument<String>("packageName")!!
+                    val ms  = call.argument<Int>("milliseconds")!!
+                    val prefs = getSharedPreferences("app_limits", Context.MODE_PRIVATE)
+                    val current = prefs.getLong("earned_time_$pkg", 0L)
+                    prefs.edit().putLong("earned_time_$pkg", current + ms.toLong()).apply()
                     result.success(null)
                 }
                 else -> result.notImplemented()
