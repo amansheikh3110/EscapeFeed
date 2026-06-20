@@ -50,6 +50,13 @@ class BlockAccessibilityService : AccessibilityService() {
     // ── Main loop (every 1 s) ────────────────────────────────────────────────────
     private val blockChecker = object : Runnable {
         override fun run() {
+            // Shield off → lift all enforcement and hide any active notification
+            if (!prefs.getBoolean("shield_enabled", true)) {
+                if (notifActivePkg != null) dismissSessionNotification()
+                handler.postDelayed(this, 1000)
+                return
+            }
+
             val pkg = currentForegroundPkg
 
             // 1. Blocking enforcement

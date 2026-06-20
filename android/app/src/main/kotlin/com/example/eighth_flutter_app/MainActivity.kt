@@ -37,6 +37,8 @@ class MainActivity: FlutterActivity() {
                     result.success(null)
                 }
                 "startTracking" -> {
+                    getSharedPreferences("app_limits", Context.MODE_PRIVATE)
+                        .edit().putBoolean("shield_enabled", true).apply()
                     val intent = Intent(this, UsageTrackingService::class.java)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         startForegroundService(intent)
@@ -47,6 +49,8 @@ class MainActivity: FlutterActivity() {
                 }
                 "stopTracking" -> {
                     stopService(Intent(this, UsageTrackingService::class.java))
+                    getSharedPreferences("app_limits", Context.MODE_PRIVATE)
+                        .edit().putBoolean("shield_enabled", false).apply()
                     result.success(null)
                 }
                 "isServiceRunning" -> {
