@@ -2,6 +2,7 @@ package com.example.eighth_flutter_app
 
 import android.app.ActivityManager
 import android.app.AppOpsManager
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -9,6 +10,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.os.Build
 import android.provider.Settings
+import java.util.Calendar
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -112,6 +114,10 @@ class MainActivity: FlutterActivity() {
                     editor.apply()
                     result.success(null)
                 }
+                "getSocialMediaUsage" -> {
+                    val packages = call.argument<List<String>>("packages")!!
+                    result.success(getSocialMediaUsage(packages))
+                }
                 "saveEarnedTime" -> {
                     val pkg = call.argument<String>("packageName")!!
                     val ms  = call.argument<Int>("milliseconds")!!
@@ -191,6 +197,28 @@ class MainActivity: FlutterActivity() {
         }
         
         editor.apply()
+    }
+
+    private fun getSocialMediaUsage(packages: List<String>): Map<String, Long> {
+        val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val startOfDay = cal.timeInMillis
+        val now = System.currentTimeMillis()
+
+        val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_BEST, startOfDay, now)
+        val aggregated = mutableMapOf<String, Long>()
+        stats?.forEach { stat ->
+            if (stat.packageName in packages) {
+                aggregated[stat.packageName] =
+                    (aggregated[stat.packageName] ?: 0L) + stat.totalTimeInForeground
+            }
+        }
+        return packages.associateWith { aggregated[it] ?: 0L }
     }
 
     private fun isServiceRunning(serviceClass: Class<*>): Boolean {

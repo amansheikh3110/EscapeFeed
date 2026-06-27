@@ -10,6 +10,7 @@ import 'screens/earn_time_screen.dart';
 import 'services/timer_manager.dart';
 import 'services/theme_notifier.dart';
 import 'services/gamification_service.dart';
+import 'services/social_roast_service.dart';
 import 'models/app_limit.dart';
 import 'utils/constants.dart';
 
@@ -25,6 +26,7 @@ void main() {
         ChangeNotifierProvider(create: (_) => TimerManager()),
         ChangeNotifierProvider(create: (_) => ThemeNotifier()),
         ChangeNotifierProvider(create: (_) => GamificationService()),
+        ChangeNotifierProvider(create: (_) => SocialRoastService()),
       ],
       child: const CtrlApp(),
     ),

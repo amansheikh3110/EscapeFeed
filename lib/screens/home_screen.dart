@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../services/timer_manager.dart';
 import '../services/theme_notifier.dart';
 import '../services/gamification_service.dart';
+import '../services/social_roast_service.dart';
 import '../models/app_limit.dart';
 import '../utils/constants.dart';
 import '../services/usage_tracker.dart';
@@ -35,9 +36,11 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _refreshGamification() {
-    final tm = Provider.of<TimerManager>(context, listen: false);
-    final gs = Provider.of<GamificationService>(context, listen: false);
+    final tm  = Provider.of<TimerManager>(context, listen: false);
+    final gs  = Provider.of<GamificationService>(context, listen: false);
+    final srs = Provider.of<SocialRoastService>(context, listen: false);
     gs.refresh(tm.blockedApps);
+    srs.refresh();
   }
 
   @override
@@ -73,7 +76,8 @@ class _HomeScreenState extends State<HomeScreen>
     final c = CtrlColors.of(context);
     final tm = Provider.of<TimerManager>(context);
     final tn = Provider.of<ThemeNotifier>(context);
-    final gs = Provider.of<GamificationService>(context);
+    final gs  = Provider.of<GamificationService>(context);
+    final srs = Provider.of<SocialRoastService>(context);
     final apps = tm.blockedApps;
     // Notification permission is desirable but not required for tracking to work.
     // Only the two essential permissions gate the shield toggle.
@@ -99,6 +103,11 @@ class _HomeScreenState extends State<HomeScreen>
                     _buildShieldCard(c, tm, isReady),
                     const SizedBox(height: 12),
                     _buildGamificationStrip(c, gs),
+                    if (!tm.isTrackingActive && srs.activeRoasts.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _RealityCheckCard(srs: srs, c: c,
+                          onSetLimits: () => Navigator.pushNamed(context, '/selector')),
+                    ],
                     const SizedBox(height: 20),
                     _buildSectionHeader(c, 'YOUR APPS', apps.length),
                     const SizedBox(height: 10),
@@ -975,4 +984,252 @@ class _RingPainter extends CustomPainter {
   @override
   bool shouldRepaint(_RingPainter old) =>
       old.progress != progress || old.color != color;
+}
+
+// ── Reality Check card ─────────────────────────────────────────────────────────
+
+class _RealityCheckCard extends StatelessWidget {
+  final SocialRoastService srs;
+  final CtrlColors c;
+  final VoidCallback onSetLimits;
+  const _RealityCheckCard({
+    required this.srs,
+    required this.c,
+    required this.onSetLimits,
+  });
+
+  static const _levelColors = [
+    Color(0xFF34C759), // L1
+    Color(0xFFFFCC00), // L2
+    Color(0xFFFF9500), // L3
+    Color(0xFFFF3B30), // L4
+    Color(0xFFFF3B30), // L5
+  ];
+
+  static const _levelLabels = [
+    'All good',
+    'Hmm…',
+    'Touch grass 🌿',
+    'Intervention needed 😬',
+    'Certified addict 💀',
+  ];
+
+  Color _colorFor(int level) =>
+      level < 1 ? c.accent : _levelColors[level - 1];
+
+  @override
+  Widget build(BuildContext context) {
+    final top     = srs.topOffender!;
+    final others  = srs.activeRoasts.where((r) => r.package != top.package).toList();
+    final maxLvl  = srs.maxLevel;
+    final accent  = _colorFor(maxLvl);
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accent.withValues(alpha: 0.35)),
+        boxShadow: [
+          BoxShadow(color: accent.withValues(alpha: 0.1), blurRadius: 18),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header ──────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Row(
+              children: [
+                Text('🧠', style: const TextStyle(fontSize: 16)),
+                const SizedBox(width: 8),
+                Text(
+                  'Reality Check',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: c.text,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    maxLvl >= 1 ? _levelLabels[maxLvl - 1] : 'All good',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: accent,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Top offender ─────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(top.emoji, style: const TextStyle(fontSize: 22)),
+                    const SizedBox(width: 8),
+                    Text(
+                      top.name,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: c.text,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: _colorFor(top.level).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        top.usageLabel,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _colorFor(top.level),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // Progress bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: top.barRatio,
+                    minHeight: 4,
+                    backgroundColor: c.border,
+                    valueColor: AlwaysStoppedAnimation(_colorFor(top.level)),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  top.roast,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: c.textSub,
+                    height: 1.5,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Others grid ──────────────────────────────────────────────────
+          if (others.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: others.map((r) {
+                  final col = _colorFor(r.level);
+                  return SizedBox(
+                    width: (MediaQuery.of(context).size.width - 72) / 2,
+                    child: Row(
+                      children: [
+                        Text(r.emoji,
+                            style: const TextStyle(fontSize: 14)),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(r.name,
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: c.textSub)),
+                                  Text(r.usageLabel,
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          color: col,
+                                          fontWeight: FontWeight.w700)),
+                                ],
+                              ),
+                              const SizedBox(height: 3),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: r.barRatio,
+                                  minHeight: 3,
+                                  backgroundColor: c.border,
+                                  valueColor:
+                                      AlwaysStoppedAnimation(col),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+
+          // ── CTA ──────────────────────────────────────────────────────────
+          if (srs.maxLevel >= 3)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: GestureDetector(
+                onTap: onSetLimits,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border:
+                        Border.all(color: accent.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.shield_outlined, size: 14, color: accent),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Set limits before it gets worse',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: accent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+          const SizedBox(height: 14),
+        ],
+      ),
+    );
+  }
 }
