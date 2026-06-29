@@ -114,6 +114,10 @@ class MainActivity: FlutterActivity() {
                     editor.apply()
                     result.success(null)
                 }
+                "getWeeklyUsage" -> {
+                    val packages = call.argument<List<String>>("packages")!!
+                    result.success(getWeeklyUsage(packages))
+                }
                 "getSocialMediaUsage" -> {
                     val packages = call.argument<List<String>>("packages")!!
                     result.success(getSocialMediaUsage(packages))
@@ -197,6 +201,26 @@ class MainActivity: FlutterActivity() {
         }
         
         editor.apply()
+    }
+
+    private fun getWeeklyUsage(packages: List<String>): Map<String, List<Long>> {
+        val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        return packages.associateWith { pkg ->
+            (0..6).map { dayOffset ->
+                val idx = 6 - dayOffset
+                val dayCal = Calendar.getInstance().apply {
+                    add(Calendar.DAY_OF_YEAR, -dayOffset)
+                    set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0);      set(Calendar.MILLISECOND, 0)
+                }
+                val startMs = dayCal.timeInMillis
+                val endMs   = if (dayOffset == 0) System.currentTimeMillis()
+                              else startMs + 24L * 60 * 60 * 1000
+                val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_BEST, startMs, endMs)
+                stats?.filter { it.packageName == pkg }
+                      ?.sumOf { it.totalTimeInForeground } ?: 0L
+            }
+        }
     }
 
     private fun getSocialMediaUsage(packages: List<String>): Map<String, Long> {
