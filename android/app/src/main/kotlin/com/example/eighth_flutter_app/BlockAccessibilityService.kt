@@ -6,17 +6,31 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.widget.Toast
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import java.util.Calendar
 
 class BlockAccessibilityService : AccessibilityService() {
 
     private lateinit var prefs: SharedPreferences
     private lateinit var notifManager: NotificationManager
+    private lateinit var windowManager: WindowManager
     private val handler = Handler(Looper.getMainLooper())
 
     // Updated by onAccessibilityEvent; null = home screen / no known app
@@ -25,9 +39,17 @@ class BlockAccessibilityService : AccessibilityService() {
     // Which app's session notification is currently showing (null = none)
     private var notifActivePkg: String? = null
 
+    // Friction overlay state
+    private var frictionView: View? = null
+    private var frictionSecondsLeft = 0
+    private var frictionRunnable: Runnable? = null
+    private val lastFrictionTimeByPkg = mutableMapOf<String, Long>()
+
     companion object {
-        private const val SESSION_CHANNEL_ID = "ctrl_session"
-        private const val SESSION_NOTIF_ID   = 2001
+        private const val SESSION_CHANNEL_ID   = "ctrl_session"
+        private const val SESSION_NOTIF_ID     = 2001
+        private const val FRICTION_DURATION_S  = 5
+        private const val FRICTION_COOLDOWN_MS = 60_000L
     }
 
     // Going to one of these means the user is on the home screen → clear foreground
@@ -76,22 +98,14 @@ class BlockAccessibilityService : AccessibilityService() {
             val isTracked = pkg != null && pkg != packageName && isTrackedApp(pkg)
             if (isTracked && pkg != null) {
                 if (notifActivePkg != pkg) {
-                    // New app came to foreground: cancel previous notification (if any),
-                    // show a fresh countdown for the new app.
                     dismissSessionNotification()
                     showSessionNotification(pkg)
                     notifActivePkg = pkg
-                }
-                // If same app is still in foreground, chronometer updates itself;
-                // refresh the body text every tick so "Xm Xs remaining" stays accurate.
-                else {
+                } else {
                     refreshSessionNotification(pkg)
                 }
             } else {
-                // No tracked app in foreground → hide notification
-                if (notifActivePkg != null) {
-                    dismissSessionNotification()
-                }
+                if (notifActivePkg != null) dismissSessionNotification()
             }
 
             handler.postDelayed(this, 1000)
@@ -149,7 +163,6 @@ class BlockAccessibilityService : AccessibilityService() {
             .setOngoing(true)
             .setShowWhen(true)
             .setUsesChronometer(true)
-            // setWhen = future timestamp so the chronometer counts down to zero
             .setWhen(System.currentTimeMillis() + remaining)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -158,8 +171,6 @@ class BlockAccessibilityService : AccessibilityService() {
 
         return builder.build()
     }
-
-    // ── Notification channel ─────────────────────────────────────────────────────
 
     private fun createSessionChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -175,29 +186,242 @@ class BlockAccessibilityService : AccessibilityService() {
         }
     }
 
+    // ── Open count ───────────────────────────────────────────────────────────────
+
+    private fun todayStr(): String {
+        val cal = Calendar.getInstance()
+        val y = cal.get(Calendar.YEAR)
+        val m = cal.get(Calendar.MONTH) + 1
+        val d = cal.get(Calendar.DAY_OF_MONTH)
+        return "$y-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}"
+    }
+
+    private fun incrementOpenCount(pkg: String) {
+        val key = "open_count_${pkg}_${todayStr()}"
+        prefs.edit().putInt(key, prefs.getInt(key, 0) + 1).apply()
+    }
+
+    private fun getTodayOpenCount(pkg: String): Int =
+        prefs.getInt("open_count_${pkg}_${todayStr()}", 0)
+
+    // ── Friction overlay ─────────────────────────────────────────────────────────
+
+    private fun maybeShowFriction(pkg: String) {
+        val now = System.currentTimeMillis()
+        if (now - (lastFrictionTimeByPkg[pkg] ?: 0L) < FRICTION_COOLDOWN_MS) return
+        lastFrictionTimeByPkg[pkg] = now
+        showFriction(
+            appName   = getAppLabel(pkg),
+            openCount = getTodayOpenCount(pkg),
+            usedMs    = prefs.getLong("used_$pkg", 0L)
+        )
+    }
+
+    private fun showFriction(appName: String, openCount: Int, usedMs: Long) {
+        dismissFriction()
+        val view = createFrictionView(appName, openCount, usedMs)
+        frictionView = view
+        frictionSecondsLeft = FRICTION_DURATION_S
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        )
+
+        try {
+            windowManager.addView(view, params)
+            scheduleFrictionTick(view)
+        } catch (_: Exception) {
+            frictionView = null
+        }
+    }
+
+    private fun scheduleFrictionTick(view: View) {
+        val r = Runnable {
+            if (frictionView !== view) return@Runnable
+            frictionSecondsLeft--
+            if (frictionSecondsLeft <= 0) {
+                dismissFriction()
+                return@Runnable
+            }
+            (view.findViewWithTag("ring") as? FrictionRingView)?.let { ring ->
+                ring.setCountdown(frictionSecondsLeft, FRICTION_DURATION_S)
+                ring.invalidate()
+            }
+            scheduleFrictionTick(view)
+        }
+        frictionRunnable = r
+        handler.postDelayed(r, 1000)
+    }
+
+    private fun dismissFriction() {
+        frictionRunnable?.let { handler.removeCallbacks(it) }
+        frictionRunnable = null
+        val v = frictionView ?: return
+        frictionView = null
+        try { windowManager.removeView(v) } catch (_: Exception) {}
+    }
+
+    private fun createFrictionView(appName: String, openCount: Int, usedMs: Long): View {
+        val dp = resources.displayMetrics.density
+        fun Int.px() = (this * dp).toInt()
+
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(0xE6000000.toInt())
+            isClickable = true
+        }
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(0xFF1C1C1E.toInt())
+                cornerRadius = 24 * dp
+            }
+            setPadding(28.px(), 32.px(), 28.px(), 28.px())
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+
+        card.addView(TextView(this).apply {
+            text = appName
+            textSize = 22f
+            setTextColor(0xFFF2F2F7.toInt())
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+        })
+
+        card.addView(spaceView(10.px()))
+
+        card.addView(TextView(this).apply {
+            text = "opened $openCount times today"
+            textSize = 15f
+            setTextColor(0xFFA78BFA.toInt())
+            gravity = Gravity.CENTER
+        })
+
+        card.addView(spaceView(5.px()))
+
+        card.addView(TextView(this).apply {
+            text = "${formatTime(usedMs)} used today"
+            textSize = 13f
+            setTextColor(0xFF8E8E93.toInt())
+            gravity = Gravity.CENTER
+        })
+
+        card.addView(spaceView(26.px()))
+
+        val ring = FrictionRingView(this).apply {
+            tag = "ring"
+            setCountdown(FRICTION_DURATION_S, FRICTION_DURATION_S)
+        }
+        card.addView(ring, LinearLayout.LayoutParams(72.px(), 72.px()).also {
+            it.gravity = Gravity.CENTER_HORIZONTAL
+        })
+
+        card.addView(spaceView(14.px()))
+
+        card.addView(TextView(this).apply {
+            text = "pause before you scroll"
+            textSize = 11f
+            setTextColor(0xFF636366.toInt())
+            gravity = Gravity.CENTER
+            letterSpacing = 0.04f
+        })
+
+        root.addView(
+            card,
+            FrameLayout.LayoutParams(300.px(), FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+        )
+
+        return root
+    }
+
+    private fun spaceView(heightPx: Int): View = View(this).apply {
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, heightPx)
+    }
+
+    // ── Countdown ring view ──────────────────────────────────────────────────────
+
+    inner class FrictionRingView(ctx: Context) : View(ctx) {
+        private var secondsLeft = 0
+        private var total = 1
+
+        private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x33FFFFFF
+            style = Paint.Style.STROKE
+            strokeWidth = 7f
+        }
+        private val fgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFA78BFA.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 7f
+            strokeCap = Paint.Cap.ROUND
+        }
+        private val numPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFF2F2F7.toInt()
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.DEFAULT_BOLD
+        }
+
+        fun setCountdown(left: Int, totalSecs: Int) {
+            secondsLeft = left
+            total = totalSecs.coerceAtLeast(1)
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            val cx = width / 2f
+            val cy = height / 2f
+            val r = minOf(cx, cy) - bgPaint.strokeWidth / 2
+
+            canvas.drawCircle(cx, cy, r, bgPaint)
+
+            val progress = secondsLeft.toFloat() / total
+            if (progress > 0f) {
+                val oval = RectF(cx - r, cy - r, cx + r, cy + r)
+                canvas.drawArc(oval, -90f, 360f * progress, false, fgPaint)
+            }
+
+            numPaint.textSize = r * 0.65f
+            canvas.drawText(secondsLeft.toString(), cx, cy + numPaint.textSize * 0.38f, numPaint)
+        }
+    }
+
     // ── Accessibility lifecycle ──────────────────────────────────────────────────
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        prefs        = getSharedPreferences("app_limits", Context.MODE_PRIVATE)
-        notifManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        prefs         = getSharedPreferences("app_limits", Context.MODE_PRIVATE)
+        notifManager  = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         createSessionChannel()
         handler.post(blockChecker)
     }
 
-    /**
-     * Track which app is in the foreground:
-     *  • launcher packages → user went home, clear foreground
-     *  • system packages   → ignore (status bar, shade, etc.)
-     *  • anything else     → that's the new foreground app
-     */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
+        val prev = currentForegroundPkg
         when {
-            pkg in systemPackages   -> { /* ignore */ }
-            pkg in launcherPackages -> currentForegroundPkg = null
-            else                    -> currentForegroundPkg = pkg
+            pkg in systemPackages -> { /* ignore */ }
+            pkg in launcherPackages -> {
+                dismissFriction()
+                currentForegroundPkg = null
+            }
+            else -> {
+                if (pkg != prev) {
+                    dismissFriction()
+                    if (isTrackedApp(pkg)) {
+                        incrementOpenCount(pkg)
+                        val shieldOn = prefs.getBoolean("shield_enabled", true)
+                        if (shieldOn && !shouldBlock(pkg)) {
+                            maybeShowFriction(pkg)
+                        }
+                    }
+                }
+                currentForegroundPkg = pkg
+            }
         }
     }
 
@@ -205,6 +429,7 @@ class BlockAccessibilityService : AccessibilityService() {
 
     override fun onUnbind(intent: Intent?): Boolean {
         handler.removeCallbacks(blockChecker)
+        dismissFriction()
         dismissSessionNotification()
         return super.onUnbind(intent)
     }

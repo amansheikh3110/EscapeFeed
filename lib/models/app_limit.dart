@@ -5,6 +5,7 @@ class AppLimit {
   final int cooldownMinutes;
   final int usedMillis;
   final int lastBlockedMillis;
+  final int openCount;
 
   AppLimit({
     required this.packageName,
@@ -13,6 +14,7 @@ class AppLimit {
     this.cooldownMinutes = 240, // 4 hours
     this.usedMillis = 0,
     this.lastBlockedMillis = 0,
+    this.openCount = 0,
   });
 
   // Convert limit to milliseconds
@@ -64,6 +66,7 @@ class AppLimit {
     int? cooldownMinutes,
     int? usedMillis,
     int? lastBlockedMillis,
+    int? openCount,
   }) {
     return AppLimit(
       packageName: packageName ?? this.packageName,
@@ -72,6 +75,7 @@ class AppLimit {
       cooldownMinutes: cooldownMinutes ?? this.cooldownMinutes,
       usedMillis: usedMillis ?? this.usedMillis,
       lastBlockedMillis: lastBlockedMillis ?? this.lastBlockedMillis,
+      openCount: openCount ?? this.openCount,
     );
   }
 }

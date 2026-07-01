@@ -73,6 +73,7 @@ class MainActivity: FlutterActivity() {
                 "getUsageStats" -> {
                     val prefs = getSharedPreferences("app_limits", Context.MODE_PRIVATE)
                     val blockedApps = prefs.getStringSet("blocked_apps", emptySet()) ?: emptySet()
+                    val todayStr = getTodayStr()
                     val stats = mutableMapOf<String, Map<String, Any>>()
 
                     for (pkg in blockedApps) {
@@ -82,12 +83,14 @@ class MainActivity: FlutterActivity() {
                         val used        = prefs.getLong("used_$pkg", 0L)
                         val lastBlocked = prefs.getLong("last_blocked_$pkg", 0L)
                         val cooldown    = prefs.getLong("cooldown_$pkg", 4 * 60 * 60 * 1000L)
+                        val openCount   = prefs.getInt("open_count_${pkg}_$todayStr", 0)
 
                         stats[pkg] = mapOf(
                             "limit" to limit,
                             "used" to used,
                             "lastBlocked" to lastBlocked,
-                            "cooldown" to cooldown
+                            "cooldown" to cooldown,
+                            "openCount" to openCount
                         )
                     }
                     result.success(stats)
@@ -243,6 +246,14 @@ class MainActivity: FlutterActivity() {
             }
         }
         return packages.associateWith { aggregated[it] ?: 0L }
+    }
+
+    private fun getTodayStr(): String {
+        val cal = Calendar.getInstance()
+        val y = cal.get(Calendar.YEAR)
+        val m = cal.get(Calendar.MONTH) + 1
+        val d = cal.get(Calendar.DAY_OF_MONTH)
+        return "$y-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}"
     }
 
     private fun isServiceRunning(serviceClass: Class<*>): Boolean {

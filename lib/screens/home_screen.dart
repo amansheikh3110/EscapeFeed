@@ -498,6 +498,13 @@ class _HomeScreenState extends State<HomeScreen>
                     '${_fmt(app.usedMillis)} used  ·  ${_fmt(app.remainingUsageMillis)} left',
                     style: TextStyle(fontSize: 12, color: c.textSub),
                   ),
+                if (app.openCount > 0) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    '${app.openCount}× opened today',
+                    style: TextStyle(fontSize: 10, color: c.textMuted),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 // Progress bar
                 ClipRRect(

@@ -106,7 +106,8 @@ class TimerManager extends ChangeNotifier {
       final usedMillis = details['used'] as int? ?? 0;
       final lastBlockedMillis = details['lastBlocked'] as int? ?? 0;
       final cooldownMillis = details['cooldown'] as int? ?? (4 * 60 * 60 * 1000);
-      
+      final openCount = details['openCount'] as int? ?? 0;
+
       final appName = _installedApps.firstWhere(
         (a) => a['packageName'] == pkg,
         orElse: () => {'name': pkg.split('.').last},
@@ -119,6 +120,7 @@ class TimerManager extends ChangeNotifier {
         cooldownMinutes: cooldownMillis ~/ (60 * 1000),
         usedMillis: usedMillis,
         lastBlockedMillis: lastBlockedMillis,
+        openCount: openCount,
       ));
     });
     
